@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bola Climb - Step 6</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f0f0f0;
+    }
+    canvas {
+      border: 1px solid black;
+      touch-action: none; /* Mencegah scroll/zoom di HP */
+    }
+    #fallback {
+      display: none;
+      width: 400px;
+      height: 600px;
+      background: red;
+      color: white;
+      text-align: center;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="fallback">Canvas gagal! Pakai Chrome/Safari terbaru.</div>
+  <script>
+    // Ambil canvas
+    const canvas = document.getElementById('gameCanvas');
+    const fallback = document.getElementById('fallback');
+    if (!canvas) {
+      fallback.style.display = 'block';
+      throw new Error('Canvas tidak ditemukan');
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      fallback.style.display = 'block';
+      throw new Error('Context 2D gagal');
+    }
+    console.log('Canvas dan context berhasil diinisialisasi');
+
+    // Bola properties
+    let ball = {
+      x: 200, // Posisi tengah canvas
+      y: 500, // Posisi awal
+      radius: 20,
+      vx: 0, // Kecepatan horizontal (menggelinding)
+      vy: -5, // Kecepatan awal vertikal (lompat kecil)
+      gravity: 0.5,
+      bounce: 0.7, // Koefisien restitusi (pantulan)
+      jumpForce: -8, // Dorongan lompatan
+      rollSpeed: 0.5 // Kecepatan menggelinding
+    };
+
+    // Garis aman bawah (3cm = ~120px)
+    const safeLine = {
+      x: 140, // Tengah, dengan lebar 120px
+      y: 580,
+      width: 120, // 3cm ~120px
+      height: 20
+    };
+
+    // Keranjang target finish di atas
+    const basket = {
+      x: 150,
+      y: 50,
+      width: 100,
+      height: 50
+    };
+
+    // Paths yang digambar pemain
+    let paths = [];
+    let isDrawing = false;
+    let currentPath = [];
+    const maxLength = 120; // Maks panjang 3cm ~120px
+
+    // Fungsi hitung panjang path
+    function calculatePathLength(path) {
+      let length = 0;
+      for (let i = 1; i < path.length; i++) {
+        const dx = path[i].x - path[i-1].x;
+        const dy = path[i].y - path[i-1].y;
+        length += Math.sqrt(dx * dx + dy * dy);
+      }
+      return length;
+    }
+
+    // Konversi koordinat untuk touch/mouse
+    function getCoordinates(e) {
+      const rect = canvas.getBoundingClientRect();
+      let x, y;
+      if (e.type.startsWith('touch')) {
+        const touch = e.touches[0] || e.changedTouches[0];
+        x = touch.clientX - rect.left;
+        y = touch.clientY - rect.top;
+      } else {
+        x = e.offsetX;
+        y = e.offsetY;
+      }
+      return { x, y };
+    }
+
+    // Touch events untuk HP
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getCoordinates(e);
+      currentPath = [{ x: pos.x, y: pos.y }];
+      console.log('Touch start:', pos);
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isDrawing) {
+        const pos = getCoordinates(e);
+        const length = calculatePathLength([...currentPath, pos]);
+        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height) {
+          currentPath.push({ x: pos.x, y: pos.y });
+        }
+        drawScene();
+        console.log('Touch move:', pos, 'Panjang:', length);
+      }
+    });
+
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (isDrawing) {
+        isDrawing = false;
+        const pos = getCoordinates(e);
+        if (pos.x !== undefined && pos.y !== undefined) {
+          currentPath.push({ x: pos.x, y: pos.y });
+        }
+        const length = calculatePathLength(currentPath);
+        if (length <= maxLength && length > 0) { // Hanya simpan jika valid
+          paths.push(currentPath);
+          console.log('Garis disimpan:', currentPath);
+        } else {
+          console.log('Garis tidak disimpan, panjang:', length, 'melebihi', maxLength);
+        }
+        currentPath = [];
+        drawScene();
+      }
+    });
+
+    // Mouse events (untuk tes di desktop)
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      const pos = getCoordinates(e);
+      currentPath = [{ x: pos.x, y: pos.y }];
+      console.log('Mouse down:', pos);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDrawing) {
+        const pos = getCoordinates(e);
+        const length = calculatePathLength([...currentPath, pos]);
+        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height) {
+          currentPath.push({ x: pos.x, y: pos.y });
+        }
+        drawScene();
+        console.log('Mouse move:', pos, 'Panjang:', length);
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (isDrawing) {
+        isDrawing = false;
+        const pos = getCoordinates(e);
+        currentPath.push({ x: pos.x, y: pos.y });
+        const length = calculatePathLength(currentPath);
+        if (length <= maxLength && length > 0) { // Hanya simpan jika valid
+          paths.push(currentPath);
+          console.log('Garis disimpan:', currentPath);
+        } else {
+          console.log('Garis tidak disimpan, panjang:', length, 'melebihi', maxLength);
+        }
+        currentPath = [];
+        drawScene();
+      }
+    });
+
+    // Update game
+    function update() {
+      // Terapkan gravitasi
+      ball.vy += ball.gravity;
+      ball.y += ball.vy;
+      ball.x += ball.vx;
+
+      // Batasi bola agar tetap di dalam canvas (horizontal)
+      if (ball.x - ball.radius < 0) {
+        ball.x = ball.radius;
+        ball.vx = -ball.vx * ball.bounce;
+      }
+      if (ball.x + ball.radius > canvas.width) {
+        ball.x = canvas.width - ball.radius;
+        ball.vx = -ball.vx * ball.bounce;
+      }
+
+      // Cek tabrakan dengan garis aman bawah
+      if (ball.y + ball.radius >= safeLine.y && ball.vy > 0 &&
+          ball.x >= safeLine.x && ball.x <= safeLine.x + safeLine.width) {
+        ball.y = safeLine.y - ball.radius;
+        ball.vy = ball.jumpForce; // Lompat kecil
+        ball.vy *= ball.bounce; // Tambah efek pantulan
+        ball.vx = ball.rollSpeed * (Math.random() > 0.5 ? 1 : -1); // Menggelinding acak
+        console.log('Mendarat di garis aman, vy:', ball.vy);
+      } else if (ball.y + ball.radius > safeLine.y + safeLine.height) { // Jatuh ke jurang
+        alert('Game Over! Bola jatuh ke jurang. Refresh untuk main lagi.');
+        ball.x = 200; // Kembali ke posisi awal
+        ball.y = 500;
+        ball.vy = -5; // Kecepatan awal
+        ball.vx = 0;
+        paths = []; // Hapus semua garis saat game over
+      }
+
+      // Cek tabrakan dengan paths yang digambar
+      let landed = false;
+      for (let path of paths) {
+        for (let i = 0; i < path.length - 1; i++) {
+          const p1 = path[i];
+          const p2 = path[i + 1];
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+
+          if (ball.y + ball.radius >= minY && ball.y + ball.radius <= maxY + 5 &&
+              ball.x >= minX && ball.x <= maxX && ball.vy > 0) {
+            if (Math.abs(p1.y - p2.y) < 5) { // Hanya garis horizontal
+              ball.y = minY - ball.radius;
+              ball.vy = ball.jumpForce; // Lompat kecil
+              ball.vy *= ball.bounce; // Tambah efek pantulan
+              ball.vx = ball.rollSpeed * (Math.random() > 0.5 ? 1 : -1); // Menggelinding
+              landed = true;
+              console.log('Mendarat di garis, vy:', ball.vy);
+              break;
+            }
+          }
+        }
+        if (landed) break;
+      }
+
+      // Cek jika bola mencapai keranjang (target finish)
+      if (ball.x > basket.x && ball.x < basket.x + basket.width &&
+          ball.y + ball.radius > basket.y && ball.y - ball.radius < basket.y + basket.height) {
+        alert('You Win! Bola masuk keranjang. Refresh untuk main lagi.');
+        ball.x = 200;
+        ball.y = 500;
+        ball.vy = -5;
+        ball.vx = 0;
+        paths = []; // Reset paths saat menang
+      }
+
+      // Gesekan kecil untuk perlambat menggelinding
+      ball.vx *= 0.98;
+      ball.vy *= 0.99; // Stabilisasi vertikal
+
+      // Gambar ulang
+      drawScene();
+      requestAnimationFrame(update);
+    }
+
+    // Gambar scene
+    function drawScene() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Gambar watermark
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Warna hitam semi-transparan (opacity 0.3)
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('Source by : ton-x cryptoiz', 10, 20); // Posisi atas kiri
+
+      // Gambar garis aman bawah
+      ctx.fillStyle = 'green';
+      ctx.fillRect(safeLine.x, safeLine.y, safeLine.width, safeLine.height);
+
+      // Gambar bola
+      ctx.fillStyle = 'black';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Gambar keranjang target
+      ctx.fillStyle = 'orange';
+      ctx.fillRect(basket.x, basket.y + basket.height - 5, basket.width, 5); // Dasar keranjang
+      ctx.strokeStyle = 'orange';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(basket.x, basket.y + basket.height - 5);
+      ctx.lineTo(basket.x, basket.y);
+      ctx.lineTo(basket.x + basket.width, basket.y);
+      ctx.lineTo(basket.x + basket.width, basket.y + basket.height - 5);
+      ctx.stroke();
+
+      // Gambar semua paths
+      ctx.strokeStyle = 'blue';
+      ctx.lineWidth = 5;
+      for (let path of paths) {
+        if (path.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+          ctx.lineTo(path[i].x, path[i].y);
+        }
+        ctx.stroke();
+      }
+
+      // Gambar path sementara
+      if (isDrawing && currentPath.length >= 2) {
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(currentPath[0].x, currentPath[0].y);
+        for (let i = 1; i < currentPath.length; i++) {
+          ctx.lineTo(currentPath[i].x, currentPath[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // Mulai game
+    update();
+  </script>
+</body>
+</html>
