@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Bola Climb - Step 6</title>
+  <title>Bola Climb - Step 11</title>
   <style>
     body {
       margin: 0;
@@ -31,13 +31,15 @@
 <body>
   <canvas id="gameCanvas" width="400" height="600"></canvas>
   <div id="fallback">Canvas gagal! Pakai Chrome/Safari terbaru.</div>
+  <img id="basketImage" src="https://raw.githubusercontent.com/Wongbase17/Abd/refs/heads/main/1758785455798.png" style="display:none;">
   <script>
-    // Ambil canvas
+    // Ambil canvas dan elemen gambar
     const canvas = document.getElementById('gameCanvas');
     const fallback = document.getElementById('fallback');
-    if (!canvas) {
+    const basketImage = document.getElementById('basketImage');
+    if (!canvas || !basketImage) {
       fallback.style.display = 'block';
-      throw new Error('Canvas tidak ditemukan');
+      throw new Error('Canvas atau gambar keranjang tidak ditemukan');
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -67,7 +69,7 @@
       height: 20
     };
 
-    // Keranjang target finish di atas
+    // Keranjang target finish dengan gambar PNG
     const basket = {
       x: 150,
       y: 50,
@@ -79,7 +81,7 @@
     let paths = [];
     let isDrawing = false;
     let currentPath = [];
-    const maxLength = 120; // Maks panjang 3cm ~120px
+    const maxLength = 160; // Ubah ke 4cm ~160px
 
     // Fungsi hitung panjang path
     function calculatePathLength(path) {
@@ -90,6 +92,22 @@
         length += Math.sqrt(dx * dx + dy * dy);
       }
       return length;
+    }
+
+    // Fungsi cek persilangan garis (untuk mencegah cross)
+    function linesIntersect(p1, p2, q1, q2) {
+      const o1 = orientation(p1, p2, q1);
+      const o2 = orientation(p1, p2, q2);
+      const o3 = orientation(q1, q2, p1);
+      const o4 = orientation(q1, q2, p2);
+      if (o1 !== o2 && o3 !== o4) return true;
+      return false;
+    }
+
+    function orientation(p, q, r) {
+      const val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+      if (val === 0) return 0; // Collinear
+      return val > 0 ? 1 : 2; // Clock or counterclock
     }
 
     // Konversi koordinat untuk touch/mouse
@@ -121,8 +139,24 @@
       if (isDrawing) {
         const pos = getCoordinates(e);
         const length = calculatePathLength([...currentPath, pos]);
-        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height) {
+        let intersects = false;
+        const lastPoint = currentPath[currentPath.length - 1];
+        for (let path of paths) {
+          for (let i = 0; i < path.length - 1; i++) {
+            if (linesIntersect(lastPoint, pos, path[i], path[i+1])) {
+              intersects = true;
+              break;
+            }
+          }
+          if (intersects) break;
+        }
+        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height && !intersects) {
           currentPath.push({ x: pos.x, y: pos.y });
+        } else if (length > maxLength) {
+          // Potong garis ke panjang maksimum dan simpan
+          paths.push(currentPath);
+          console.log('Garis mencapai max, disimpan:', currentPath);
+          isDrawing = false; // Berhenti menggambar, tidak buat garis baru
         }
         drawScene();
         console.log('Touch move:', pos, 'Panjang:', length);
@@ -161,8 +195,24 @@
       if (isDrawing) {
         const pos = getCoordinates(e);
         const length = calculatePathLength([...currentPath, pos]);
-        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height) {
+        let intersects = false;
+        const lastPoint = currentPath[currentPath.length - 1];
+        for (let path of paths) {
+          for (let i = 0; i < path.length - 1; i++) {
+            if (linesIntersect(lastPoint, pos, path[i], path[i+1])) {
+              intersects = true;
+              break;
+            }
+          }
+          if (intersects) break;
+        }
+        if (length <= maxLength && pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height && !intersects) {
           currentPath.push({ x: pos.x, y: pos.y });
+        } else if (length > maxLength) {
+          // Potong garis ke panjang maksimum dan simpan
+          paths.push(currentPath);
+          console.log('Garis mencapai max, disimpan:', currentPath);
+          isDrawing = false; // Berhenti menggambar, tidak buat garis baru
         }
         drawScene();
         console.log('Mouse move:', pos, 'Panjang:', length);
@@ -220,7 +270,7 @@
         paths = []; // Hapus semua garis saat game over
       }
 
-      // Cek tabrakan dengan paths yang digambar
+      // Cek tabrakan dengan paths yang digambar (perbaiki agar tidak tembus)
       let landed = false;
       for (let path of paths) {
         for (let i = 0; i < path.length - 1; i++) {
@@ -231,8 +281,11 @@
           const minY = Math.min(p1.y, p2.y);
           const maxY = Math.max(p1.y, p2.y);
 
-          if (ball.y + ball.radius >= minY && ball.y + ball.radius <= maxY + 5 &&
-              ball.x >= minX && ball.x <= maxX && ball.vy > 0) {
+          // Perbaiki deteksi: Gunakan jarak lebih ketat dan cek jika bola menyentuh garis dari atas
+          const distToLine = Math.abs((p2.y - p1.y) * ball.x - (p2.x - p1.x) * ball.y + p2.x * p1.y - p2.y * p1.x) / Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
+          if (distToLine <= ball.radius * 0.9 && // Toleransi lebih ketat (90% radius)
+              ball.y + ball.radius >= minY && ball.y + ball.radius <= maxY + 2 &&
+              ball.x >= minX - ball.radius && ball.x <= maxX + ball.radius && ball.vy > 0) {
             if (Math.abs(p1.y - p2.y) < 5) { // Hanya garis horizontal
               ball.y = minY - ball.radius;
               ball.vy = ball.jumpForce; // Lompat kecil
@@ -250,6 +303,10 @@
       // Cek jika bola mencapai keranjang (target finish)
       if (ball.x > basket.x && ball.x < basket.x + basket.width &&
           ball.y + ball.radius > basket.y && ball.y - ball.radius < basket.y + basket.height) {
+        // Bola masuk, tidak tembus: hentikan gravitasi dan kecepatan
+        ball.vy = 0;
+        ball.vx = 0;
+        ball.y = basket.y + basket.height - ball.radius - 5; // Duduk di dasar keranjang
         alert('You Win! Bola masuk keranjang. Refresh untuk main lagi.');
         ball.x = 200;
         ball.y = 500;
@@ -273,7 +330,7 @@
 
       // Gambar watermark
       ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Warna hitam semi-transparan (opacity 0.3)
-      ctx.font = '14px Arial';
+      ctx.font = 'bold 14px Arial'; // Tambah bold untuk readability
       ctx.textAlign = 'left';
       ctx.fillText('Source by : ton-x cryptoiz', 10, 20); // Posisi atas kiri
 
@@ -287,17 +344,8 @@
       ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Gambar keranjang target
-      ctx.fillStyle = 'orange';
-      ctx.fillRect(basket.x, basket.y + basket.height - 5, basket.width, 5); // Dasar keranjang
-      ctx.strokeStyle = 'orange';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(basket.x, basket.y + basket.height - 5);
-      ctx.lineTo(basket.x, basket.y);
-      ctx.lineTo(basket.x + basket.width, basket.y);
-      ctx.lineTo(basket.x + basket.width, basket.y + basket.height - 5);
-      ctx.stroke();
+      // Gambar keranjang target dengan gambar PNG
+      ctx.drawImage(basketImage, basket.x, basket.y, basket.width, basket.height);
 
       // Gambar semua paths
       ctx.strokeStyle = 'blue';
@@ -329,4 +377,4 @@
     update();
   </script>
 </body>
-</html>
+  </html>
